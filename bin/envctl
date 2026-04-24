@@ -1,0 +1,341 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ENVCTL_VERSION="0.1.0"
+ENVCTL_DIR="${ENVCTL_DIR:-$HOME/.config/envctl}"
+ENVCTL_AGENT_LABEL="com.user.envctl"
+ENVCTL_AGENT_PLIST="$HOME/Library/LaunchAgents/${ENVCTL_AGENT_LABEL}.plist"
+ENVCTL_LOADER="$ENVCTL_DIR/.loader.sh"
+
+_bold()  { printf '\033[1m%s\033[0m' "$*"; }
+_green() { printf '\033[32m%s\033[0m' "$*"; }
+_red()   { printf '\033[31m%s\033[0m' "$*"; }
+_yellow(){ printf '\033[33m%s\033[0m' "$*"; }
+_dim()   { printf '\033[2m%s\033[0m' "$*"; }
+
+_usage() {
+  cat <<EOF
+
+$(_bold envctl) $ENVCTL_VERSION — universal environment variable manager for macOS and Linux
+
+$(_bold USAGE)
+  envctl <command> [args]
+
+$(_bold KEY MANAGEMENT)
+  set <cluster> KEY=VALUE      Add or update a variable in a cluster
+  rm  <cluster> KEY            Remove a variable from a cluster
+  get <cluster> KEY            Print the raw value of a variable
+
+$(_bold CLUSTER MANAGEMENT)
+  load   [cluster]             Load all clusters or a specific one into the session
+  reload                       Reload all clusters (after editing)
+  list   [cluster]             List vars in all or specific cluster (values masked)
+  status [cluster]             Show which vars are currently active in the system
+  edit   [cluster]             Open cluster file in \$EDITOR
+
+$(_bold SYSTEM)
+  install                      Install LaunchAgent (macOS) or environment.d (Linux)
+  uninstall                    Remove LaunchAgent or environment.d files
+  version                      Show version
+
+$(_bold CONFIG DIR)
+  $ENVCTL_DIR/
+    ai.env                     # One .env file per cluster
+    cloud.env
+    dev.env
+
+$(_bold EXAMPLES)
+  envctl set ai V0_API_KEY=abc123
+  envctl set ai OPENAI_API_KEY=sk-...
+  envctl rm  ai OLD_KEY
+  envctl get ai V0_API_KEY
+  envctl list
+  envctl reload
+  envctl status
+
+EOF
+}
+
+_ensure_dir() { mkdir -p "$ENVCTL_DIR"; }
+
+_cluster_file() { echo "$ENVCTL_DIR/${1}.env"; }
+
+_env_files() {
+  local cluster="${1:-}"
+  if [[ -n "$cluster" ]]; then
+    _cluster_file "$cluster"
+  else
+    find "$ENVCTL_DIR" -maxdepth 1 -name "*.env" ! -name ".*" | sort
+  fi
+}
+
+_parse_env_file() {
+  local file="$1"
+  [[ -f "$file" ]] || return 0
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    [[ -z "${line// }" ]] && continue
+    echo "$line"
+  done < "$file"
+}
+
+_mask_value() {
+  local value="$1"
+  if [[ ${#value} -gt 8 ]]; then
+    printf '%s%s' "${value:0:4}" "$(printf '*%.0s' {1..8})"
+  else
+    printf '%s' "$(printf '*%.0s' {1..8})"
+  fi
+}
+
+# ── Key Management ──────────────────────────────────────────────
+
+cmd_set() {
+  local cluster="${1:-}" entry="${2:-}"
+  [[ -z "$cluster" || -z "$entry" ]] && { echo "Usage: envctl set <cluster> KEY=VALUE" >&2; exit 1; }
+  [[ "$entry" == *=* ]] || { echo "Entry must be KEY=VALUE format" >&2; exit 1; }
+
+  _ensure_dir
+  local file key value tmp
+  file="$(_cluster_file "$cluster")"
+  key="${entry%%=*}"
+  value="${entry#*=}"
+  [[ -f "$file" ]] || touch "$file"
+
+  if grep -q "^${key}=" "$file" 2>/dev/null; then
+    tmp="$(mktemp)"
+    grep -v "^${key}=" "$file" > "$tmp"
+    mv "$tmp" "$file"
+    echo "$(_yellow "~") Updated $(_bold "$key") in cluster '$cluster'"
+  else
+    echo "$(_green "✓") Added $(_bold "$key") to cluster '$cluster'"
+  fi
+
+  echo "${key}=${value}" >> "$file"
+
+  if [[ "$(uname)" == "Darwin" ]]; then
+    launchctl setenv "$key" "$value" 2>/dev/null && \
+      echo "  $(_dim "→ active in current session via launchctl")"
+  fi
+}
+
+cmd_rm() {
+  local cluster="${1:-}" key="${2:-}"
+  [[ -z "$cluster" || -z "$key" ]] && { echo "Usage: envctl rm <cluster> KEY" >&2; exit 1; }
+
+  local file
+  file="$(_cluster_file "$cluster")"
+  [[ -f "$file" ]] || { echo "Cluster '$cluster' not found" >&2; exit 1; }
+
+  if grep -q "^${key}=" "$file" 2>/dev/null; then
+    local tmp
+    tmp="$(mktemp)"
+    grep -v "^${key}=" "$file" > "$tmp"
+    mv "$tmp" "$file"
+    echo "$(_red "−") Removed $(_bold "$key") from cluster '$cluster'"
+    if [[ "$(uname)" == "Darwin" ]]; then
+      launchctl unsetenv "$key" 2>/dev/null || true
+    fi
+  else
+    echo "Key '$key' not found in cluster '$cluster'" >&2
+    exit 1
+  fi
+}
+
+cmd_get() {
+  local cluster="${1:-}" key="${2:-}"
+  [[ -z "$cluster" || -z "$key" ]] && { echo "Usage: envctl get <cluster> KEY" >&2; exit 1; }
+
+  local file
+  file="$(_cluster_file "$cluster")"
+  [[ -f "$file" ]] || { echo "Cluster '$cluster' not found" >&2; exit 1; }
+
+  local line value
+  line="$(grep "^${key}=" "$file" 2>/dev/null | tail -1)" || true
+  [[ -z "$line" ]] && { echo "Key '$key' not found in cluster '$cluster'" >&2; exit 1; }
+  value="${line#*=}"
+  echo "$value"
+}
+
+# ── Cluster Operations ──────────────────────────────────────────
+
+cmd_load() {
+  local cluster="${1:-}" count=0 file
+
+  while IFS= read -r file; do
+    [[ -f "$file" ]] || { echo "Cluster not found: $file" >&2; exit 1; }
+    while IFS= read -r line; do
+      local key="${line%%=*}" value="${line#*=}"
+      if [[ "$(uname)" == "Darwin" ]]; then
+        launchctl setenv "$key" "$value" 2>/dev/null || true
+      fi
+      export "${key}=${value}"
+      ((count++)) || true
+    done < <(_parse_env_file "$file")
+  done < <(_env_files "$cluster")
+
+  echo "$(_green "✓") Loaded $count variable(s)${cluster:+ from cluster '$cluster'}"
+}
+
+cmd_reload() { cmd_load; }
+
+cmd_list() {
+  local cluster="${1:-}" file any=0
+
+  while IFS= read -r file; do
+    [[ -f "$file" ]] || continue
+    any=1
+    local cluster_name
+    cluster_name="$(basename "$file" .env)"
+    printf '\n%s\n' "$(_bold "[$cluster_name]")"
+    while IFS= read -r line; do
+      local key="${line%%=*}" value="${line#*=}"
+      printf '  %-32s %s\n' "$key" "$(_dim "$(_mask_value "$value")")"
+    done < <(_parse_env_file "$file")
+  done < <(_env_files "$cluster")
+
+  [[ $any -eq 0 ]] && echo "No clusters found in $ENVCTL_DIR"
+  echo ""
+}
+
+cmd_status() {
+  local cluster="${1:-}" file
+
+  while IFS= read -r file; do
+    [[ -f "$file" ]] || continue
+    local cluster_name
+    cluster_name="$(basename "$file" .env)"
+    printf '\n%s\n' "$(_bold "[$cluster_name]")"
+    while IFS= read -r line; do
+      local key="${line%%=*}"
+      if [[ "$(uname)" == "Darwin" ]]; then
+        local current
+        current="$(launchctl getenv "$key" 2>/dev/null || true)"
+        if [[ -n "$current" ]]; then
+          printf '  %s %s\n' "$(_green "✓")" "$key"
+        else
+          printf '  %s %s\n' "$(_red "✗")" "$key (not active — run: envctl install && envctl reload)"
+        fi
+      else
+        if [[ -n "${!key:-}" ]]; then
+          printf '  %s %s\n' "$(_green "✓")" "$key"
+        else
+          printf '  %s %s\n' "$(_red "✗")" "$key"
+        fi
+      fi
+    done < <(_parse_env_file "$file")
+  done < <(_env_files "$cluster")
+  echo ""
+}
+
+cmd_edit() {
+  local cluster="${1:-}"
+  _ensure_dir
+  if [[ -n "$cluster" ]]; then
+    ${EDITOR:-nano} "$(_cluster_file "$cluster")"
+  else
+    ${EDITOR:-nano} "$ENVCTL_DIR"
+  fi
+}
+
+# ── System / Install ────────────────────────────────────────────
+
+_write_loader() {
+  cat > "$ENVCTL_LOADER" <<'LOADER'
+#!/usr/bin/env bash
+ENVCTL_DIR="${ENVCTL_DIR:-$HOME/.config/envctl}"
+for f in "$ENVCTL_DIR"/*.env; do
+  [[ -f "$f" ]] || continue
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    [[ -z "${line// }" ]] && continue
+    key="${line%%=*}"
+    value="${line#*=}"
+    launchctl setenv "$key" "$value"
+  done < "$f"
+done
+LOADER
+  chmod +x "$ENVCTL_LOADER"
+}
+
+cmd_install() {
+  _ensure_dir
+  if [[ "$(uname)" == "Darwin" ]]; then
+    _write_loader
+    cat > "$ENVCTL_AGENT_PLIST" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>${ENVCTL_AGENT_LABEL}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>${ENVCTL_LOADER}</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardErrorPath</key>
+  <string>/tmp/envctl.err</string>
+  <key>StandardOutPath</key>
+  <string>/tmp/envctl.out</string>
+</dict>
+</plist>
+PLIST
+    launchctl unload "$ENVCTL_AGENT_PLIST" 2>/dev/null || true
+    launchctl load "$ENVCTL_AGENT_PLIST"
+    echo "$(_green "✓") LaunchAgent installed and loaded"
+    echo "  Plist:  $ENVCTL_AGENT_PLIST"
+    echo "  Loader: $ENVCTL_LOADER"
+    echo ""
+    echo "  $(_yellow "→") Restart GUI apps (Claude Desktop, Codex, CodeNomad) to pick up vars"
+  else
+    local unit_dir="$HOME/.config/environment.d"
+    mkdir -p "$unit_dir"
+    local file cluster_name
+    for file in "$ENVCTL_DIR"/*.env; do
+      [[ -f "$file" ]] || continue
+      cluster_name="$(basename "$file")"
+      cp "$file" "$unit_dir/envctl-${cluster_name}"
+    done
+    echo "$(_green "✓") environment.d files written to $unit_dir"
+    echo "  $(_yellow "→") Log out and back in for GUI apps to pick up vars"
+  fi
+}
+
+cmd_uninstall() {
+  if [[ "$(uname)" == "Darwin" ]]; then
+    launchctl unload "$ENVCTL_AGENT_PLIST" 2>/dev/null || true
+    rm -f "$ENVCTL_AGENT_PLIST" "$ENVCTL_LOADER"
+    echo "$(_green "✓") LaunchAgent removed"
+  else
+    rm -f "$HOME/.config/environment.d/envctl-"*.env
+    echo "$(_green "✓") environment.d files removed"
+  fi
+}
+
+# ── Entrypoint ──────────────────────────────────────────────────
+
+main() {
+  local cmd="${1:-help}"
+  shift || true
+  case "$cmd" in
+    set)        cmd_set "$@" ;;
+    rm|del)     cmd_rm "$@" ;;
+    get)        cmd_get "$@" ;;
+    load)       cmd_load "$@" ;;
+    reload)     cmd_reload ;;
+    list|ls)    cmd_list "$@" ;;
+    status)     cmd_status "$@" ;;
+    edit)       cmd_edit "$@" ;;
+    install)    cmd_install ;;
+    uninstall)  cmd_uninstall ;;
+    version|-v|--version) echo "envctl $ENVCTL_VERSION" ;;
+    help|-h|--help) _usage ;;
+    *) echo "Unknown command: $cmd" >&2; _usage >&2; exit 1 ;;
+  esac
+}
+
+main "$@"
