@@ -32,19 +32,27 @@ jobs:
         run: bin/envctl version
       - name: Help check
         run: bin/envctl help
-      - name: Set and list
+      # NOTE: capture `envctl list` into a var before grepping. Piping it
+      # directly (`list | grep -q`) makes grep close the pipe on first match,
+      # SIGPIPE-killing envctl's remaining printf → exit 141, which fails the
+      # step under `-eo pipefail`. GitHub's runner happened to flush in one
+      # write and masked it; the self-hosted runner surfaces it deterministically.
+      - name: Set, get, list
         run: |
-          mkdir -p /tmp/envctl-test
-          ENVCTL_DIR=/tmp/envctl-test bin/envctl set ai TEST_KEY=hello123
-          ENVCTL_DIR=/tmp/envctl-test bin/envctl get ai TEST_KEY | grep -q "hello123"
-          ENVCTL_DIR=/tmp/envctl-test bin/envctl list | grep -q "TEST_KEY"
+          d=/tmp/envctl-test; mkdir -p "$d"
+          ENVCTL_DIR=$d bin/envctl set ai TEST_KEY=hello123
+          val="$(ENVCTL_DIR=$d bin/envctl get ai TEST_KEY)"; grep -q hello123 <<<"$val"
+          out="$(ENVCTL_DIR=$d bin/envctl list)"; grep -q TEST_KEY <<<"$out"
       - name: Remove key
         run: |
-          ENVCTL_DIR=/tmp/envctl-test bin/envctl rm ai TEST_KEY
-          ENVCTL_DIR=/tmp/envctl-test bin/envctl list | grep -qv "TEST_KEY" || true
+          d=/tmp/envctl-test
+          ENVCTL_DIR=$d bin/envctl rm ai TEST_KEY
+          out="$(ENVCTL_DIR=$d bin/envctl list)"; ! grep -q TEST_KEY <<<"$out"
       - name: Multiple clusters
         run: |
-          ENVCTL_DIR=/tmp/envctl-test bin/envctl set cloud AWS_KEY=fake-aws
-          ENVCTL_DIR=/tmp/envctl-test bin/envctl set dev GITHUB_TOKEN=fake-gh
-          ENVCTL_DIR=/tmp/envctl-test bin/envctl list | grep -q "AWS_KEY"
-          ENVCTL_DIR=/tmp/envctl-test bin/envctl list | grep -q "GITHUB_TOKEN"
+          d=/tmp/envctl-test
+          ENVCTL_DIR=$d bin/envctl set cloud AWS_KEY=fake-aws
+          ENVCTL_DIR=$d bin/envctl set dev GITHUB_TOKEN=fake-gh
+          out="$(ENVCTL_DIR=$d bin/envctl list)"
+          grep -q AWS_KEY <<<"$out"
+          grep -q GITHUB_TOKEN <<<"$out"
