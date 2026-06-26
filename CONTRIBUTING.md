@@ -7,7 +7,7 @@ Thank you for your interest in contributing!
 envctl is a single Bash script — no build step required.
 
 ```bash
-git clone https://github.com/Capacium/envctl
+git clone https://github.com/LangeVC/envctl
 cd envctl
 chmod +x bin/envctl
 bin/envctl version
@@ -38,4 +38,4 @@ ENVCTL_DIR=/tmp/envctl-test bin/envctl rm ai TEST
 
 ## Reporting Bugs
 
-Open an issue at https://github.com/Capacium/envctl/issues — include OS, shell version, and the exact command that failed.
+Open an issue at https://github.com/LangeVC/envctl/issues — include OS, shell version, and the exact command that failed.

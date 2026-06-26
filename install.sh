@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# envctl installer — https://github.com/Capacium/envctl
+# envctl installer — https://github.com/LangeVC/envctl
 ENVCTL_VERSION="${ENVCTL_VERSION:-0.1.0}"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
-REPO="Capacium/envctl"
+REPO="LangeVC/envctl"
 
 _bold()  { printf '\033[1m%s\033[0m' "$*"; }
 _green() { printf '\033[32m%s\033[0m' "$*"; }

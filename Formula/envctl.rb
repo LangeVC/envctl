@@ -1,10 +1,10 @@
 class Envctl < Formula
   desc "Universal environment variable manager for macOS and Linux GUI and CLI apps"
-  homepage "https://github.com/Capacium/envctl"
-  url "https://github.com/Capacium/envctl/archive/refs/tags/v0.1.0.tar.gz"
+  homepage "https://github.com/LangeVC/envctl"
+  url "https://github.com/LangeVC/envctl/archive/refs/tags/v0.1.0.tar.gz"
   sha256 "PLACEHOLDER_SHA256_UPDATED_ON_RELEASE"
   license "Apache-2.0"
-  head "https://github.com/Capacium/envctl.git", branch: "main"
+  head "https://github.com/LangeVC/envctl.git", branch: "main"
 
   bottle :unneeded
 

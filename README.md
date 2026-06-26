@@ -1,8 +1,8 @@
 # envctl
 
-[![CI](https://github.com/Capacium/envctl/actions/workflows/ci.yml/badge.svg)](https://github.com/Capacium/envctl/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/Capacium/envctl/actions/workflows/codeql.yml/badge.svg)](https://github.com/Capacium/envctl/actions/workflows/codeql.yml)
-[![Release](https://img.shields.io/github/v/release/Capacium/envctl?display_name=tag)](https://github.com/Capacium/envctl/releases)
+[![CI](https://github.com/LangeVC/envctl/actions/workflows/ci.yml/badge.svg)](https://github.com/LangeVC/envctl/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/LangeVC/envctl/actions/workflows/codeql.yml/badge.svg)](https://github.com/LangeVC/envctl/actions/workflows/codeql.yml)
+[![Release](https://img.shields.io/github/v/release/LangeVC/envctl?display_name=tag)](https://github.com/LangeVC/envctl/releases)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
 [![Shell](https://img.shields.io/badge/shell-bash-green.svg)](./bin/envctl)
 [![macOS](https://img.shields.io/badge/macOS-✓-brightgreen.svg)](#)
@@ -19,20 +19,20 @@
 ### Homebrew (recommended)
 
 ```bash
-brew tap Capacium/tap
+brew tap LangeVC/tap
 brew install envctl
 ```
 
 ### One-liner
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Capacium/envctl/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/LangeVC/envctl/main/install.sh | bash
 ```
 
 ### Manual
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Capacium/envctl/main/bin/envctl \
+curl -fsSL https://raw.githubusercontent.com/LangeVC/envctl/main/bin/envctl \
   -o /usr/local/bin/envctl && chmod +x /usr/local/bin/envctl
 ```
 

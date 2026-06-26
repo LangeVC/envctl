@@ -11,7 +11,7 @@
 Please **do not** open a public GitHub issue for security vulnerabilities.
 
 Report vulnerabilities privately via GitHub's Security Advisory feature:
-https://github.com/Capacium/envctl/security/advisories/new
+https://github.com/LangeVC/envctl/security/advisories/new
 
 We will respond within 72 hours.
 
