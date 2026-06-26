@@ -1,7 +1,11 @@
 # envctl
 
-[![CI](https://github.com/LangeVC/envctl/actions/workflows/ci.yml/badge.svg)](https://github.com/LangeVC/envctl/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/LangeVC/envctl/actions/workflows/codeql.yml/badge.svg)](https://github.com/LangeVC/envctl/actions/workflows/codeql.yml)
+> [!NOTE]
+> **Public mirror.** The canonical repository is hosted on our self-hosted
+> Forgejo (`git.langevc.com`). This GitHub copy is a read-only mirror kept in
+> sync for visibility and installation. Bug reports are welcome via Issues;
+> pull requests are applied upstream and synced back here.
+
 [![Release](https://img.shields.io/github/v/release/LangeVC/envctl?display_name=tag)](https://github.com/LangeVC/envctl/releases)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
 [![Shell](https://img.shields.io/badge/shell-bash-green.svg)](./bin/envctl)

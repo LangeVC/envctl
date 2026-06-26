@@ -6,25 +6,26 @@ on:
   pull_request:
     branches: [main]
 
+# Forgejo Actions: actions are pulled via fully-qualified GitHub URLs
+# (instance DEFAULT_ACTIONS_URL is code.forgejo.org). Runner label
+# ubuntu-latest → catthehacker act image. macOS leg dropped (no macOS
+# runner on the self-hosted Forgejo runner; covered manually).
 jobs:
   shellcheck:
     name: ShellCheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: https://github.com/actions/checkout@v4
       - name: Install shellcheck
-        run: sudo apt-get install -y shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
       - name: Lint bin/envctl
         run: shellcheck -S warning bin/envctl install.sh
 
   test:
-    name: Tests (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
+    name: Tests
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: https://github.com/actions/checkout@v4
       - name: Make executable
         run: chmod +x bin/envctl install.sh
       - name: Version check
