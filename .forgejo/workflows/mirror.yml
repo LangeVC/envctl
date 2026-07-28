@@ -1,10 +1,15 @@
 name: Mirror to GitHub
 
-# Forgejo is canonical; GitHub (LangeVC/envctl) is the public read-only mirror.
-# Force-push all branches + tags so GitHub exactly tracks Forgejo.
+# Forgejo (git.langevc.com) is canonical. GitHub (LangeVC/envctl) is a read-only mirror.
+# Force-push ONLY the ref that triggered this run (branch or tag). No --prune and no
+# 'refs/heads/*' wildcard: the CI checkout only has this one ref locally, so a pruning
+# wildcard push would try to delete every OTHER branch on the mirror — including
+# GitHub's default branch (which GitHub refuses, failing the job) and any
+# GitHub-managed branch such as gh-pages. Pushing only ${GITHUB_REF} keeps the mirror
+# in sync and leaves those untouched. Unified pattern (see lvc-ops/docs/release-flow.md).
 on:
   push:
-    branches: [main]
+    branches: ["**"]
     tags: ["v*"]
 
 jobs:
@@ -19,5 +24,4 @@ jobs:
           GH_MIRROR_TOKEN: ${{ secrets.GH_MIRROR_TOKEN }}
         run: |
           remote="https://x-access-token:${GH_MIRROR_TOKEN}@github.com/LangeVC/envctl.git"
-          git push --force --prune "$remote" '+refs/heads/*:refs/heads/*'
-          git push --force "$remote" '+refs/tags/*:refs/tags/*'
+          git push --force "$remote" "+${GITHUB_REF}:${GITHUB_REF}"
